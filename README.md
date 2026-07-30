@@ -28,6 +28,7 @@ All libraries built from source (GitHub `libimobiledevice` org) and installed to
 | libtatsu-1.0               | 1.0.5-3-g60a39f3      |
 | libimobiledevice-1.0       | 1.4.0-9-gfa0f791      |
 | libirecovery-1.0           | 1.3.1-5-g04d04f7      |
+| **idevicerestore**         | **1.0.0-271-g45145e9** |
 
 ---
 
@@ -73,7 +74,7 @@ sudo apt-get update && sudo apt-get install -y \
   build-essential git autoconf automake libtool pkg-config \
   libssl-dev libusb-1.0-0-dev libcurl4-openssl-dev \
   python3-dev libzip-dev usbmuxd checkinstall \
-  usbip usbutils
+  usbip usbutils zlib1g-dev dos2unix
 ```
 
 ### 2.2 Build script
@@ -214,6 +215,63 @@ scan → bind → stop AMDS → attach → start usbmuxd → verify.
 
 ---
 
+## Part 6 — Building idevicerestore
+
+`idevicerestore` restores firmware images (IPSW files) to iOS devices.
+It depends on all 6 libraries built in Part 2.
+
+### 6.1 Important: clone into WSL filesystem
+
+> **Do NOT clone on Windows and build from `/mnt/c/...`.**
+> Repos cloned on Windows have CRLF line endings. The `autogen.sh` shebang
+> becomes `/bin/sh^M` inside WSL, causing: `bad interpreter: No such file or directory`.
+> Always clone directly inside the WSL filesystem.
+
+### 6.2 Build
+
+Use `scripts/build-idevicerestore.sh`, or run manually:
+
+```bash
+export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+
+git clone https://github.com/libimobiledevice/idevicerestore.git \
+  /root/libimd-build/idevicerestore
+cd /root/libimd-build/idevicerestore
+
+./autogen.sh --prefix=/usr/local
+make -j$(nproc)
+make install
+ldconfig
+```
+
+### 6.3 Verify
+
+```bash
+idevicerestore --version
+# idevicerestore 1.0.0-271-g45145e9 (libirecovery 1.3.1-5-g04d04f7, libtatsu 1.0.5-3-g60a39f3)
+```
+
+### 6.4 Basic usage
+
+```bash
+# List connected device in normal/recovery mode
+idevicerestore -l
+
+# Restore a firmware image (will erase the device)
+idevicerestore -d /path/to/firmware.ipsw
+
+# Restore with update (preserve data where possible)
+idevicerestore -u /path/to/firmware.ipsw
+
+# Erase + restore
+idevicerestore -e /path/to/firmware.ipsw
+```
+
+> Device must be in **DFU** or **Recovery** mode for a restore.
+> To enter DFU mode, follow the button sequence for your device model.
+
+---
+
 ## Architecture Overview
 
 ```
@@ -232,7 +290,7 @@ Unix socket: /var/run/usbmuxd
       │
       ▼
 libimobiledevice tools
-  idevice_id, ideviceinfo, idevicebackup2, ...
+  idevice_id, ideviceinfo, idevicebackup2, idevicerestore ...
 ```
 
 ---
@@ -247,6 +305,8 @@ libimobiledevice tools
 | `ideviceinfo` → "No device found" | Unplug and replug, re-attach with usbipd, tap **Trust** on device |
 | Libraries show `NOT FOUND` in pkg-config | `export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig` |
 | Force-bind warns "reboot may be required" | Replug the iOS device after binding |
+| `autogen.sh` → `bad interpreter: /bin/sh^M` | Repo was cloned on Windows; clone inside WSL instead (see Part 6.1) |
+| `idevicerestore` → `PACKAGE_VERSION is not defined` | Same CRLF issue; clone inside WSL, not from `/mnt/c/...` |
 
 ---
 
@@ -254,9 +314,10 @@ libimobiledevice tools
 
 | Path | Contents |
 |------|----------|
-| `/root/libimd-build/` | Source trees for all 6 libraries |
+| `/root/libimd-build/` | Source trees for all 7 projects |
 | `/usr/local/lib/` | Installed `.so` shared libraries |
 | `/usr/local/include/` | Header files |
 | `/usr/local/lib/pkgconfig/` | `.pc` files for pkg-config |
-| `/usr/local/bin/` | Tools: `idevice_id`, `ideviceinfo`, `iproxy`, `inetcat`, `irecovery`, `plistutil` |
-| `scripts/connect-ios.ps1` | iOS attach convenience script |
+| `/usr/local/bin/` | Tools: `idevice_id`, `ideviceinfo`, `iproxy`, `inetcat`, `irecovery`, `idevicerestore`, `plistutil` |
+| `scripts/connect-ios.ps1` | iOS attach convenience script (Windows) |
+| `scripts/build-idevicerestore.sh` | idevicerestore build script (WSL) |
